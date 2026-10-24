@@ -2,8 +2,9 @@
 
 A slow-moving stereo drone voice for the Electrosmith Daisy Pod. It plays continuously from power-up: no notes and no envelopes, just a sustained tone that drifts and breathes. It also has eight patch slots that survive power cycles.
 
-The repo has two parts:
+The repo has three parts:
 
+- **`bin/DroneVoice.bin`** is a ready-built firmware image. You can flash it straight from a browser without installing anything (see [Flashing the prebuilt binary](#flashing-the-prebuilt-binary)).
 - **`firmware/`** contains the C++ firmware for the Daisy Pod.
 - **`docs/`** contains a browser version that runs the same DSP, ported to JavaScript, with the same controls and patch slots. It can be served with GitHub Pages (see [Browser version](#browser-version)).
 
@@ -75,6 +76,19 @@ The slots start out as eight factory presets:
 
 To restore the factory presets, change `kStoreVersion` in `DroneVoice.cpp` and reflash. Stored data with a different version number is replaced at boot.
 
+## Flashing the prebuilt binary
+
+You don't need the toolchain for this. It needs a browser with WebUSB, such as Chrome or Edge; Firefox and Safari don't support WebUSB.
+
+1. Download [`bin/DroneVoice.bin`](bin/DroneVoice.bin). On GitHub, open the file and use the download button.
+2. Connect the Pod over USB and put it in DFU mode: hold BOOT, tap RESET, then release BOOT.
+3. Open the Daisy Web Programmer at [flash.daisy.audio](https://flash.daisy.audio), connect to the Daisy, choose `DroneVoice.bin` as the file to flash, and program it.
+4. Press RESET (or power-cycle the Pod) if it doesn't start on its own.
+
+Saved patches live in a separate part of the flash, so reflashing doesn't erase them.
+
+The binary is built from the source in `firmware/` and runs from the Pod's internal flash, so no bootloader is needed. If you change the code, rebuild it as described below.
+
 ## Building the firmware
 
 Requirements:
@@ -108,6 +122,8 @@ make LIBDAISY_DIR=/path/to/libDaisy DAISYSP_DIR=/path/to/DaisySP
 ```
 
 The build uses about 80% of internal flash. The reverb buffer (about 400 KB) is placed in SDRAM.
+
+To refresh the prebuilt image after a change, copy `firmware/build/DroneVoice.bin` to `bin/DroneVoice.bin` and commit it.
 
 ## Browser version
 
