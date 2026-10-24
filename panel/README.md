@@ -27,7 +27,7 @@ Starter artwork for a 6 HP panel that labels Legio's controls for DroneVoice. Th
 | `dronevoice-legio-preview.png` | Preview of the black, silver and colour versions |
 | `make_panel.py` | Generates all of the above; edit labels and layout here |
 
-All text is converted to outlines, so the files don't depend on fonts. To regenerate, run `python3 make_panel.py`; it needs matplotlib.
+All text is converted to outlines, so the files don't depend on fonts. To regenerate, run `python3 make_panel.py`; it needs matplotlib and the `fonts-ocr-a` package.
 
 ## What's on the panel
 
@@ -38,7 +38,7 @@ All text is converted to outlines, so the files don't depend on fonts. To regene
 
 There are three versions. Black (white text) and silver (black text) are one colour, like Noise Engineering's own overlays. The colour version also tints each knob legend with its page LED colour, so a glance at the LED tells you which words apply.
 
-The text is set in DejaVu Sans Condensed, a free font, and converted to outlines. Noise Engineering doesn't document the font on their own panels.
+The text is set in OCR-A, the typeface Noise Engineering uses on their website. Their site uses Adobe's commercial OCR A Std; this artwork uses John Sauter's public-domain OCR-A Bold (the `fonts-ocr-a` package on Debian and Ubuntu). The bold weight keeps strokes thick enough for silkscreen and engraving at these sizes. The text is converted to outlines, so the files don't need the font. To use DejaVu Sans Condensed instead, set `FONT_STYLE = "dejavu"` in `make_panel.py`.
 
 ## Ways to make it
 

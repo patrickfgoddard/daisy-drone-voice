@@ -68,8 +68,20 @@ A_FUNCS = ["ROOT", "CUTOFF", "RATE", "MIX", "WAVE", "SLOT"]
 B_FUNCS = ["DETUNE", "RES", "DEPTH", "SIZE", "INTVL", ""]  # page 5 (patch): unused
 
 # ---------------------------------------------------------------- text
-BOLD = FontProperties(fname="/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf")
-BOOK = FontProperties(fname="/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf")
+# Panel typeface. "ocr" is OCR-A, the face Noise Engineering uses on their
+# website, in John Sauter's public-domain version (Debian/Ubuntu package
+# fonts-ocr-a). "dejavu" is DejaVu Sans Condensed. Text is converted to
+# outlines, so the output files never need the font installed.
+FONT_STYLE = "ocr"
+
+FONTS = {
+    "ocr": ("/usr/share/fonts/truetype/ocr-a/OCRABold.ttf",
+            "/usr/share/fonts/truetype/ocr-a/OCRABold.ttf"),
+    "dejavu": ("/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf",
+               "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf"),
+}
+BOLD = FontProperties(fname=FONTS[FONT_STYLE][0])   # labels
+BOOK = FontProperties(fname=FONTS[FONT_STYLE][1])   # small notes
 
 
 def text_path(s, x, y, cap, anchor="middle", font=BOLD, spacing=0.0):
@@ -143,7 +155,7 @@ def build(ink, bg, colour=False):
         return w
 
     # Title
-    txt("DRONEVOICE", W / 2, 9.4, 2.5, spacing=0.25)
+    txt("DRONEVOICE", W / 2, 9.4, 2.4, spacing=0.08)
 
     # LEDs
     txt("PAGE", LED_L[0], 19.3, 1.15)
@@ -158,14 +170,14 @@ def build(ink, bg, colour=False):
         ys = [cy - 3.7, cy, cy + 3.7] if letter == "A" else [cy - 4.8, cy - 1.6, cy + 1.6]
         for i, (f, y) in enumerate(zip(funcs[:3], ys)):
             col = PAGE_COL[i] if colour else ink
-            w = txt(f, 8.6, y + 0.6, 1.2, anchor="end", fill=col)
+            w = txt(f, 8.6, y + 0.55, 1.1, anchor="end", fill=col)
             txt(PAGE_INITIAL[i], 8.6 - w - 0.55, y + 0.6, 0.85, anchor="end", font=BOOK, fill=col)
         for i, (f, y) in enumerate(zip(funcs[3:], ys)):
             if not f:
                 continue
             col = PAGE_COL[i + 3] if colour else ink
             w0 = txt(PAGE_INITIAL[i + 3], 22.2, y + 0.6, 0.85, anchor="start", font=BOOK, fill=col)
-            txt(f, 22.2 + w0 + 0.55, y + 0.6, 1.2, anchor="start", fill=col)
+            txt(f, 22.2 + w0 + 0.45, y + 0.55, 1.1, anchor="start", fill=col)
         # knob letter just above the knob, small
         txt(letter, W / 2, cy - 6.9, 1.2)
 
@@ -177,8 +189,8 @@ def build(ink, bg, colour=False):
         txt(label, 7.3, SW_L[1] + y + 0.45, 0.95, anchor="start", font=BOOK)
     for label, y in zip(["DRONE", "+IN", "IN"], [-2.3, 0.0, 2.3]):
         txt(label, 23.7, SW_R[1] + y + 0.45, 0.95, anchor="end", font=BOOK)
-    txt("TRACK", SW_L[0], 71.2, 1.1)
-    txt("INPUT", SW_R[0], 71.2, 1.1)
+    txt("TRACK", SW_L[0] + 0.3, 71.2, 1.0)
+    txt("INPUT", SW_R[0] - 0.5, 71.2, 1.0)
 
     # Jacks: label above each one; outputs reversed out of a solid box
     knockout = bg or "#000000"
