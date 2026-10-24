@@ -17,6 +17,7 @@ It runs on two boards:
 | `firmware/common/drone_engine.h` | The sound, shared by both boards |
 | `firmware/pod/` | Daisy Pod controls, LEDs and patch storage |
 | `firmware/legio/` | Legio controls, LEDs, pitch input and patch storage |
+| `panel/` | Starter artwork for a custom 6 HP Legio panel or overlay (see [panel/README.md](panel/README.md)) |
 | `docs/` | A browser version of the Pod build. It can be served with GitHub Pages (see [Browser version](#browser-version)) |
 
 ## Sound
@@ -136,7 +137,7 @@ For accurate 1 V/oct tracking, calibrate once. You'll need a source of exactly 1
 
 If both LEDs blink red instead, the two readings were almost the same, usually because nothing was patched. The old calibration is kept.
 
-Until you calibrate, whatever is at the pitch input at power-up is treated as 0 V and a 10 V input span is assumed. Octaves may not be exact in that state.
+Until you calibrate, whatever is at the pitch input at power-up is treated as 0 V, and the input is assumed to span −2 V to +5 V, which is the range Noise Engineering gives for Legio's pitch input. Octaves may not be exact in that state.
 
 ## Patches
 

@@ -37,7 +37,8 @@
 //
 // Pitch calibration: hold the encoder while powering up, then follow the
 // LEDs (see README). Until calibrated, the pitch input reading at power-up
-// is treated as 0 V and a 10 V span is assumed.
+// is treated as 0 V, and the input is assumed to span -2 V to +5 V (the
+// range Noise Engineering gives for Legio's pitch input).
 
 #include "daisy_legio.h"
 #include "../common/drone_engine.h"
@@ -75,7 +76,7 @@ struct Store
 
 static constexpr uint32_t kStoreVersion  = 0xD2A1;
 static constexpr uint32_t kStoreOffset   = 0x400000;
-static constexpr float    kDefaultPerVolt = 0.1f; // assumes a 10 V span
+static constexpr float    kDefaultPerVolt = 1.f / 7.f; // -2 V..+5 V span
 static PersistentStorage<Store> storage(hw.seed.qspi);
 
 // Active pitch calibration (copied from storage, or the defaults)
