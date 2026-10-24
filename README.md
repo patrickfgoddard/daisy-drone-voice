@@ -1,3 +1,5 @@
+Hey, I think it goes without saying that please proceed at your own risk with trying this firmware out. I have NOT tried out the Legio version yet (time constraints). Also, please note that this is entirely "vibe-coded" as the kids say. 100% developed with AI assistance from Claude. I have played out live with the Pod version and its nutso great. I'm really pleased. 
+
 # DroneVoice
 
 A slow-moving stereo drone voice for Daisy hardware. It plays continuously from power-up: no notes and no envelopes, just a sustained tone that drifts and breathes. It has eight patch slots that survive power cycles.
