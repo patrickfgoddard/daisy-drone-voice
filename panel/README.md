@@ -20,9 +20,11 @@ Starter artwork for a 6 HP panel that labels Legio's controls for DroneVoice. Th
 | --- | --- |
 | `dronevoice-legio-black.svg` | Black panel with white text. The `cut` layer (red hairlines) has the outline and holes |
 | `dronevoice-legio-silver.svg` | Silver panel with black text, with the same `cut` layer |
+| `dronevoice-legio-colour.svg` | Black panel with each knob legend in its page LED colour, with the same `cut` layer |
+| `dronevoice-legio-colour-1200dpi.png` | The colour artwork as a 1200 dpi image (1417 × 6071 px), for full-colour UV printing services that want a bitmap |
 | `dronevoice-legio-silk.svg` | The artwork alone, for a PCB's silkscreen layer |
 | `dronevoice-legio-cuts.dxf` | Outline and holes only, in mm, for laser cutting, CNC or a PCB's board outline |
-| `dronevoice-legio-preview.png` | Preview image |
+| `dronevoice-legio-preview.png` | Preview of the black, silver and colour versions |
 | `make_panel.py` | Generates all of the above; edit labels and layout here |
 
 All text is converted to outlines, so the files don't depend on fonts. To regenerate, run `python3 make_panel.py`; it needs matplotlib.
@@ -34,7 +36,9 @@ All text is converted to outlines, so the files don't depend on fonts. To regene
 - **Switches:** TRACK (pitch input: quantised, free, sample and hold) and INPUT (drone, drone and input, input only), with the three positions labelled.
 - **Jacks:** the outputs use reversed labels, so they stand out.
 
-Like Noise Engineering's own overlays, the artwork is one colour: black with white text, or silver with black text.
+There are three versions. Black (white text) and silver (black text) are one colour, like Noise Engineering's own overlays. The colour version also tints each knob legend with its page LED colour, so a glance at the LED tells you which words apply.
+
+The text is set in DejaVu Sans Condensed, a free font, and converted to outlines. Noise Engineering doesn't document the font on their own panels.
 
 ## Ways to make it
 
@@ -43,6 +47,11 @@ Like Noise Engineering's own overlays, the artwork is one colour: black with whi
 - Printed: print the black or silver SVG on adhesive vinyl or photo paper, laminate it, then cut the outline and punch the holes.
 
 Either way, remove the knobs first if the overlay's holes are smaller than the knobs.
+
+**Colour.** Monochrome is the norm for Eurorack panels, but colour is possible:
+- **PCB panel with colour printing:** JLCPCB offers multi-colour silkscreen, printed with a 6-colour UV printer at 1200 dpi. You import a JPG or PNG onto the silkscreen layer in EasyEDA; `dronevoice-legio-colour-1200dpi.png` is sized for that.
+- **Aluminium:** panel services that UV-print on aluminium can print full colour from the SVG.
+- **Printed overlay:** any colour printer works, on vinyl or photo paper.
 
 **A replacement panel.** This replaces the stock panel, so the module has to come apart.
 - **PCB panel (FR-4):** cheap, typically ordered in fives. Black solder mask with white silkscreen gives you the black version. Import the DXF as the board outline and the silk SVG as silkscreen, for example in KiCad. 1.6 mm boards are fine in practice; the Eurorack specification calls for 2 mm.
