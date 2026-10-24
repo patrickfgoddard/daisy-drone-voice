@@ -7,8 +7,9 @@ under the Unlicense). All text is converted to outlines, so the files
 need no fonts.
 
 Outputs (in this folder):
-  dronevoice-legio-overlay.svg  full-colour artwork with a cut layer
-  dronevoice-legio-silk.svg     one-colour artwork, for PCB silkscreen
+  dronevoice-legio-black.svg    black panel, white text, with a cut layer
+  dronevoice-legio-silver.svg   silver panel, black text, with a cut layer
+  dronevoice-legio-silk.svg     artwork only, for PCB silkscreen
   dronevoice-legio-cuts.dxf     outline and holes only, for laser/CNC/KiCad
   dronevoice-legio-preview.png  quick look (needs cairosvg or Chromium)
 
@@ -59,9 +60,6 @@ JACKS = [
     (J_L3, "OUT L", True),   # True = output: label drawn reversed
     (J_R3, "OUT R", True),
 ]
-
-# Page colours, matching the left LED
-PAGE_COL = ["#ff3b30", "#34c759", "#3d7bff", "#b45cff", "#ffcc00", "#ffffff"]
 
 # Knob A (top) and knob B (bottom) functions on pages 0..5
 A_FUNCS = ["ROOT", "CUTOFF", "RATE", "MIX", "WAVE", "SLOT"]
@@ -117,9 +115,18 @@ def text_path(s, x, y, cap, anchor="middle", font=BOLD, spacing=0.0):
 
 
 # ---------------------------------------------------------------- build
-def build(colour=True):
-    ink = "#f2f2ee"
-    bg = "#111312"
+# One-colour themes, matching Noise Engineering's overlay styles
+THEMES = {
+    "black":  {"bg": "#111312", "ink": "#f2f2ee"},   # black, white text
+    "silver": {"bg": "#d8dad7", "ink": "#141414"},   # silver, black text
+    "silk":   {"bg": None,      "ink": "#ffffff"},   # artwork only, for PCB silkscreen
+}
+
+# Initials of the page LED colours: red, green, blue, purple, yellow, white
+PAGE_INITIAL = ["R", "G", "B", "P", "Y", "W"]
+
+
+def build(ink, bg):
     els = []
 
     def txt(s, x, y, cap, anchor="middle", fill=None, font=BOLD, spacing=0.0):
@@ -135,17 +142,20 @@ def build(colour=True):
     txt("LFO", LED_R[0], 19.3, 1.15)
 
     # Encoder
-    txt("TURN PAGE · PUSH SUB", W / 2, 28.2, 1.1, font=BOOK)
+    txt("TURN PAGE \u00b7 PUSH SUB", W / 2, 28.2, 1.1, font=BOOK)
 
-    # Knob legends, coloured by page: A beside the top knob, B beside the bottom
+    # Knob legends: A beside the top knob, B beside the bottom. Each word is
+    # tagged with the initial of the page LED colour that selects it.
     def legend(funcs, cy, letter):
         ys = [cy - 3.7, cy, cy + 3.7] if letter == "A" else [cy - 4.8, cy - 1.6, cy + 1.6]
         for i, (f, y) in enumerate(zip(funcs[:3], ys)):
-            col = PAGE_COL[i] if colour else ink
-            txt(f, 8.6, y + 0.6, 1.2, anchor="end", fill=col)
+            w = txt(f, 8.6, y + 0.6, 1.2, anchor="end")
+            txt(PAGE_INITIAL[i], 8.6 - w - 0.55, y + 0.6, 0.85, anchor="end", font=BOOK)
         for i, (f, y) in enumerate(zip(funcs[3:], ys)):
-            col = PAGE_COL[i + 3] if colour else ink
-            txt(f, 22.4, y + 0.6, 1.2, anchor="start", fill=col)
+            if not f:
+                continue
+            w0 = txt(PAGE_INITIAL[i + 3], 22.2, y + 0.6, 0.85, anchor="start", font=BOOK)
+            txt(f, 22.2 + w0 + 0.55, y + 0.6, 1.2, anchor="start")
         # knob letter just above the knob, small
         txt(letter, W / 2, cy - 6.9, 1.2)
 
@@ -160,44 +170,45 @@ def build(colour=True):
     txt("TRACK", SW_L[0], 71.2, 1.1)
     txt("INPUT", SW_R[0], 71.2, 1.1)
 
-    # Jacks: label above each one; outputs reversed out of a white box
+    # Jacks: label above each one; outputs reversed out of a solid box
+    knockout = bg or "#000000"
     for (x, y), name, is_out in JACKS:
         by = y - 4.75
         if is_out:
             _, w = text_path(name, x, by, 1.15)
             els.append('<rect x="%.3f" y="%.3f" width="%.3f" height="%.3f" rx="0.4" fill="%s"/>'
                        % (x - w / 2 - 0.7, by - 1.15 - 0.55, w + 1.4, 1.15 + 1.1, ink))
-            txt(name, x, by, 1.15, fill=bg)
+            txt(name, x, by, 1.15, fill=knockout)
         else:
             txt(name, x, by, 1.15)
 
     # A slow, detuned double wave across the foot of the panel
-    for k, (amp, cyc, phase) in enumerate([(0.9, 2.0, 0.0), (0.9, 2.15, 0.9)]):
+    for amp, cyc, phase in [(0.9, 2.0, 0.0), (0.9, 2.15, 0.9)]:
         pts = []
         for i in range(121):
             t = i / 120
             xx = 2.5 + t * (W - 5)
             yy = 119.8 + amp * math.sin(2 * math.pi * cyc * t + phase) * math.sin(math.pi * t)
             pts.append("%.3f %.3f" % (xx, yy))
-        stroke = (PAGE_COL[2] if k else PAGE_COL[4]) if colour else ink
-        els.append('<path d="M%s" fill="none" stroke="%s" stroke-width="0.25" stroke-linecap="round" opacity="%s"/>'
-                   % (" L".join(pts), stroke, "0.9"))
+        els.append('<path d="M%s" fill="none" stroke="%s" stroke-width="0.25" stroke-linecap="round"/>'
+                   % (" L".join(pts), ink))
 
-    return els, ink, bg
+    return els
 
 
-def svg(colour):
-    els, ink, bg = build(colour)
+def svg(theme):
+    t = THEMES[theme]
+    els = build(t["ink"], t["bg"])
     holes = "".join('<circle cx="%.4f" cy="%.4f" r="%.4f"/>' % (x, y, d / 2) for x, y, d in HOLES)
     out = []
     out.append('<?xml version="1.0" encoding="UTF-8"?>')
     out.append('<svg xmlns="http://www.w3.org/2000/svg" width="%gmm" height="%gmm" viewBox="0 0 %g %g">' % (W, H, W, H))
-    out.append('<title>DroneVoice Legio panel (%s)</title>' % ("colour overlay" if colour else "one-colour silkscreen"))
-    if colour:
-        out.append('<g id="background"><rect width="%g" height="%g" fill="%s"/></g>' % (W, H, bg))
+    out.append('<title>DroneVoice Legio panel (%s)</title>' % theme)
+    if t["bg"]:
+        out.append('<g id="background"><rect width="%g" height="%g" fill="%s"/></g>' % (W, H, t["bg"]))
     out.append('<g id="artwork">%s</g>' % "".join(els))
-    # Holes punched out of the artwork for viewing, plus a hairline cut layer
-    if colour:
+    # Holes shown punched out for viewing, plus a hairline cut layer
+    if t["bg"]:
         out.append('<g id="holes-preview" fill="#000">%s</g>' % holes)
     out.append('<g id="cut" fill="none" stroke="#ff0000" stroke-width="0.05">'
                '<rect x="0" y="0" width="%g" height="%g"/>%s</g>' % (W, H, holes))
@@ -220,15 +231,16 @@ def dxf():
 
 
 if __name__ == "__main__":
-    for name, content in [("dronevoice-legio-overlay.svg", svg(True)),
-                          ("dronevoice-legio-silk.svg", svg(False)),
+    for name, content in [("dronevoice-legio-black.svg", svg("black")),
+                          ("dronevoice-legio-silver.svg", svg("silver")),
+                          ("dronevoice-legio-silk.svg", svg("silk")),
                           ("dronevoice-legio-cuts.dxf", dxf())]:
         with open(os.path.join(HERE, name), "w") as f:
             f.write(content)
         print("wrote", name)
     try:
         import cairosvg
-        cairosvg.svg2png(url=os.path.join(HERE, "dronevoice-legio-overlay.svg"),
+        cairosvg.svg2png(url=os.path.join(HERE, "dronevoice-legio-black.svg"),
                          write_to=os.path.join(HERE, "dronevoice-legio-preview.png"),
                          output_width=600)
         print("wrote dronevoice-legio-preview.png")
