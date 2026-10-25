@@ -1,4 +1,4 @@
-Hey, I think it goes without saying that please proceed at your own risk with trying this firmware out. I have NOT tried out the Legio version yet (time constraints). Also, please note that this is entirely "vibe-coded" as the kids say. 100% developed with AI assistance from Claude. I have played out live with the Pod version and its nutso great. I'm really pleased. 
+Please proceed at your own risk with trying this firmware out. This code is entirely "vibe-coded", as the kids say. 100% developed with AI assistance from Claude. I have played out live with the Pod version and its nutso great. Very pleased. Feel free to try out and let me know what you think! 
 
 # DroneVoice
 
