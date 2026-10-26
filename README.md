@@ -28,6 +28,8 @@ It runs on two boards:
 - **Motion:** the same control sets the filter sweep, the amount of pitch drift and a gentle swell in volume.
 - **Reverb:** ReverbSc with an equal-power dry/wet mix.
 - **Glide:** root changes are quantised to semitones but glide slowly, so a new note swells in instead of jumping.
+- **Click-free changes:** when the waveform or interval changes, or a patch loads, the oscillators dip out for a few milliseconds while they switch. The sub and the reverb tail carry on underneath. Resonance and reverb mix move smoothly on a patch load.
+- **Low cut:** a gentle 20 Hz high-pass ahead of the filter keeps subsonic energy from very low roots out of the reverb and the output.
 - **Audio input (Legio only):** the stereo input can be mixed in with the drone, or processed on its own, through the same filter, motion and reverb.
 
 ```
@@ -109,7 +111,7 @@ Page 4 replaces the Pod's encoder press and button 1. Each knob there is split i
 | --- | --- |
 | Up | Quantised to semitones |
 | Centre | Free, for smooth glides and vibrato |
-| Down | Sample and hold: the pitch updates only on each gate, quantised |
+| Down | Sample and hold: the pitch updates only on each gate, quantised. It's read about 4 ms after the gate, so a sequencer's pitch CV has settled |
 
 The pitch input is added to the root set on page 0. The root still glides slowly when you turn the knob, but the pitch input follows within about 20 ms, so it tracks a sequencer.
 

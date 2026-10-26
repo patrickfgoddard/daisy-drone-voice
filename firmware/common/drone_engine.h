@@ -69,6 +69,14 @@ static const Patch kFactory[kNumSlots] = {
 
 inline void SanitizePatch(Patch &p)
 {
+    // A NaN or out-of-range value (e.g. from damaged flash) would silence
+    // the engine and could never be picked up by a knob.
+    for(int pg = 0; pg < kNumParamPages; pg++)
+        for(int k = 0; k < 2; k++)
+        {
+            float &x = p.v[pg][k];
+            x        = std::isfinite(x) ? fclamp(x, 0.f, 1.f) : 0.5f;
+        }
     p.wave     = p.wave % kNumWaves;
     p.interval = p.interval % kNumIntervals;
     p.sub      = p.sub ? 1 : 0;
@@ -132,14 +140,24 @@ class Engine
 
         verb_->Init(sample_rate);
         verb_->SetLpFreq(9000.f);
+
+        // One-pole high-pass at 20 Hz ahead of the filter: keeps subsonic
+        // sub energy (low roots, pitch CV) and input DC out of the filter,
+        // the reverb and the clipper.
+        hpCoef_ = 1.f - expf(-TWOPI_F * 20.f / sample_rate);
     }
 
-    // Jump the smoothed pitch and cutoff straight to a patch's values, so
-    // the first sound at power-up doesn't glide in from elsewhere.
+    // Jump the smoothed values straight to a patch's settings, so the first
+    // sound at power-up doesn't glide or fade in from elsewhere.
     void JumpTo(const Patch &p)
     {
         rootSm_   = RootNote(p);
         cutoffSm_ = ExpMap(p.v[1][0], 40.f, 8000.f);
+        resSm_    = p.v[1][1] * 1.5f;
+        mixSm_    = p.v[3][0];
+        wave_     = p.wave % kNumWaves;
+        interval_ = p.interval % kNumIntervals;
+        swapGain_ = 1.f;
     }
 
     // Phase of the filter LFO as -1..1, for LEDs.
@@ -191,21 +209,41 @@ class Engine
         fonepole(cvSm_, pitch_cv, 0.05f);
         fonepole(cutoffSm_, cutoffBase, 0.05f);
         fonepole(ampSm_, 1.f - depth * 0.3f * (0.5f + 0.5f * lfo2), 0.05f);
+        // Resonance and mix are smoothed too, so a patch load doesn't step.
+        fonepole(resSm_, res, 0.05f);
+        fonepole(mixSm_, mix, 0.05f);
 
         // Filter sweeps up to +-2 octaves around the base cutoff.
         const float sweep = depth * 2.f;
         filtL_.SetFreq(fclamp(cutoffSm_ * exp2f(lfoL * sweep), 20.f, 16000.f));
         filtR_.SetFreq(fclamp(cutoffSm_ * exp2f(lfoR * sweep), 20.f, 16000.f));
-        filtL_.SetRes(res);
-        filtR_.SetRes(res);
+        filtL_.SetRes(resSm_);
+        filtR_.SetRes(resSm_);
 
         verb_->SetFeedback(feedback);
+
+        // Waveform and interval changes are discrete, so switching them
+        // mid-cycle clicks. Instead the six voices dip out (~10 ms), switch
+        // while silent, then come back (~20 ms). The sub and the reverb
+        // tail carry on underneath.
+        const uint8_t wantWave = p.wave % kNumWaves;
+        const uint8_t wantInt  = p.interval % kNumIntervals;
+        const float   swapG0   = swapGain_;
+        if(swapG0 <= 0.f)
+        {
+            wave_     = wantWave;
+            interval_ = wantInt;
+        }
+        const bool changing = wantWave != wave_ || wantInt != interval_;
+        swapGain_ = changing ? fmaxf(0.f, swapG0 - 0.1f) : fminf(1.f, swapG0 + 0.05f);
+        const float swapStep = (swapGain_ - swapG0) / (float)frames;
+        float       swapG    = swapG0;
 
         // Oscillator pitches: detune spread + random drift (more with depth).
         const float root     = fclamp(rootSm_ + cvSm_, 12.f, 108.f);
         const float driftCt  = 2.f + depth * 10.f;
-        const float interval = kIntervals[p.interval % kNumIntervals];
-        const uint8_t wave   = kWaves[p.wave % kNumWaves];
+        const float interval = kIntervals[interval_];
+        const uint8_t wave   = kWaves[wave_];
         for(int i = 0; i < kNumVoices; i++)
         {
             const float semis = (i < kNumRoot ? 0.f : interval);
@@ -222,17 +260,18 @@ class Engine
         const float inGain = mode == InputMode::DroneOnly ? 0.f : 1.f;
         const float subAmp = p.sub ? 0.3f : 0.f;
         // Equal-power dry/wet crossfade
-        const float dryG = cosf(mix * HALFPI_F);
-        const float wetG = sinf(mix * HALFPI_F);
+        const float dryG = cosf(mixSm_ * HALFPI_F);
+        const float wetG = sinf(mixSm_ * HALFPI_F);
 
         for(size_t i = 0; i < size; i += 2)
         {
             float l = 0.f, r = 0.f;
             if(drone)
             {
+                swapG += swapStep;
                 for(int v = 0; v < kNumVoices; v++)
                 {
-                    const float s = osc_[v].Process();
+                    const float s = osc_[v].Process() * swapG;
                     l += s * gainL_[v];
                     r += s * gainR_[v];
                 }
@@ -245,6 +284,12 @@ class Engine
                 l += in[i] * inGain;
                 r += in[i + 1] * inGain;
             }
+
+            // 20 Hz high-pass (input minus its one-pole low-pass)
+            hpL_ += hpCoef_ * (l - hpL_);
+            hpR_ += hpCoef_ * (r - hpR_);
+            l -= hpL_;
+            r -= hpR_;
 
             l = filtL_.Process(l) * ampSm_;
             r = filtR_.Process(r) * ampSm_;
@@ -273,6 +318,15 @@ class Engine
     float cvSm_      = 0.f;  // smoothed pitch CV in semitones
     float cutoffSm_  = 800.f;
     float ampSm_     = 1.f;
+    float resSm_     = 0.f;
+    float mixSm_     = 0.5f;
+
+    uint8_t wave_     = 0;   // waveform and interval actually playing
+    uint8_t interval_ = 0;
+    float   swapGain_ = 1.f; // voice level during a waveform/interval switch
+
+    float hpCoef_ = 0.f;
+    float hpL_    = 0.f, hpR_ = 0.f; // high-pass state
 };
 
 } // namespace dronevoice

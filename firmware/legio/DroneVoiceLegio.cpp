@@ -92,7 +92,12 @@ static int      selSlot     = 0;
 static bool     saveLatched = false;
 static bool     lastGate    = false;
 static float    heldSemis   = 0.f;
+static int      sampleDelay = 0; // blocks until sample & hold reads the pitch
 static uint32_t blockCount  = 0;
+static float    lastRaw[2];      // previous knob readings, for pickup
+static bool     haveLastRaw = false;
+
+static constexpr int kSampleDelayBlocks = 4; // ~4 ms at 1 ms blocks
 
 static volatile bool pendingSave = false;
 static Patch         pendingPatch;
@@ -132,9 +137,44 @@ static float PitchSemis()
     return fclamp(volts * 12.f, -60.f, 60.f);
 }
 
+// Quantise with hysteresis: the note only changes once the input is more
+// than 0.6 semitone from it, so a voltage sitting near a boundary between
+// two notes doesn't flicker between them.
+static float QuantisedSemis()
+{
+    static float held = 0.f;
+    const float  x    = PitchSemis();
+    if(fabsf(x - held) > 0.6f)
+        held = roundf(x);
+    return held;
+}
+
+// Soft takeover: a knob picks up when it lands near the stored value, or
+// when it moves across it between two readings (so a fast sweep can't
+// jump over the pickup window).
+static bool PicksUp(float prev, float raw, float val)
+{
+    return fabsf(raw - val) < 0.03f || (prev - val) * (raw - val) < 0.f;
+}
+
 static void UpdateControls()
 {
     hw.ProcessAllControls();
+
+    // Knob readings, and the previous ones for crossing detection. Updated
+    // on every page so a knob moved on the patch page doesn't look like a
+    // crossing later.
+    const float raw[2] = {hw.controls[DaisyLegio::CONTROL_KNOB_TOP].Value(),
+                          hw.controls[DaisyLegio::CONTROL_KNOB_BOTTOM].Value()};
+    if(!haveLastRaw)
+    {
+        lastRaw[0]  = raw[0];
+        lastRaw[1]  = raw[1];
+        haveLastRaw = true;
+    }
+    const float prev[2] = {lastRaw[0], lastRaw[1]};
+    lastRaw[0]          = raw[0];
+    lastRaw[1]          = raw[1];
 
     // Page change
     const int inc = hw.encoder.Increment();
@@ -142,7 +182,13 @@ static void UpdateControls()
     {
         page      = (page + inc + kNumPages) % kNumPages;
         picked[0] = picked[1] = false;
+        // A press that turned the encoder isn't a load press.
+        saveLatched = hw.encoder.Pressed();
     }
+    // Clear the latch whenever the encoder is up, except on the release
+    // itself, which the Patch page handles below.
+    if(!hw.encoder.Pressed() && !hw.encoder.FallingEdge())
+        saveLatched = false;
 
     // Gate: sample & hold the pitch, or step the interval
     const bool gate   = hw.Gate();
@@ -152,7 +198,10 @@ static void UpdateControls()
     if(rising)
     {
         if(pitchMode == Switch3::POS_DOWN)
-            heldSemis = roundf(PitchSemis());
+            // Sequencers often change pitch CV at the same moment as the
+            // gate, and the ADC reading is smoothed, so wait a few ms for
+            // it to settle before sampling.
+            sampleDelay = kSampleDelayBlocks;
         else
         {
             cur.interval = (cur.interval + 1) % kNumIntervals;
@@ -160,9 +209,8 @@ static void UpdateControls()
                 picked[1] = false; // don't let the knob snap it back
         }
     }
-
-    const float raw[2] = {hw.controls[DaisyLegio::CONTROL_KNOB_TOP].Value(),
-                          hw.controls[DaisyLegio::CONTROL_KNOB_BOTTOM].Value()};
+    if(sampleDelay > 0 && --sampleDelay == 0)
+        heldSemis = roundf(PitchSemis());
 
     if(page == kPatchPage)
     {
@@ -224,7 +272,7 @@ static void UpdateControls()
     float *vals = cur.v[page];
     for(int k = 0; k < 2; k++)
     {
-        if(!picked[k] && fabsf(raw[k] - vals[k]) < 0.03f)
+        if(!picked[k] && PicksUp(prev[k], raw[k], vals[k]))
             picked[k] = true;
         if(picked[k])
             vals[k] = raw[k];
@@ -293,7 +341,7 @@ static void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     float     semis;
     const int pitchMode = hw.sw[DaisyLegio::SW_LEFT].Read();
     if(pitchMode == Switch3::POS_UP)
-        semis = roundf(PitchSemis());
+        semis = QuantisedSemis();
     else if(pitchMode == Switch3::POS_CENTER)
         semis = PitchSemis();
     else
@@ -360,10 +408,12 @@ static void ShowFor(float r, float g, float b, uint32_t ms)
 
 static void Calibrate()
 {
-    // Wait for the encoder held at power-up to be released.
-    while(hw.encoder.Pressed())
+    // Wait for the encoder held at power-up to be released, blinking blue
+    // so you know calibration has started and it's time to let go.
+    for(uint32_t t = 0; hw.encoder.Pressed(); t++)
     {
         hw.ProcessDigitalControls();
+        BlinkBoth(0.f, 0.f, 1.f, t);
         hw.DelayMs(1);
     }
 
@@ -456,6 +506,11 @@ int main(void)
         if(pendingSave)
         {
             Store &st = storage.GetSettings();
+            // The audio callback writes pendingPatch/pendingSlot and reads
+            // the stored slots, so take the request and update the RAM copy
+            // with interrupts off (a few microseconds). The slow flash erase
+            // and write happen afterwards with audio running.
+            __disable_irq();
             if(pendingSlot >= 0)
             {
                 st.slots[pendingSlot] = pendingPatch;
@@ -466,6 +521,7 @@ int main(void)
                 st.bootSlot = (uint8_t)(-1 - pendingSlot);
             }
             pendingSave = false;
+            __enable_irq();
             storage.Save();
         }
     }

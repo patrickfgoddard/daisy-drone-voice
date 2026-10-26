@@ -78,6 +78,8 @@ static int   curSlot     = 0;   // slot last loaded or saved
 static int   selSlot     = 0;   // slot under knob 1 on the patch page
 static bool  saveLatched = false;
 static uint32_t blockCount = 0;
+static float lastRaw[2];        // previous knob readings, for pickup
+static bool  haveLastRaw = false;
 
 // Saving erases flash, which takes too long for the audio callback, so the
 // callback hands the request to the main loop.
@@ -104,9 +106,31 @@ static void LoadPatch(const Patch &p)
     picked[0] = picked[1] = false; // knobs must be picked up again
 }
 
+// Soft takeover: a knob picks up when it lands near the stored value, or
+// when it moves across it between two readings (so a fast sweep can't
+// jump over the pickup window).
+static bool PicksUp(float prev, float raw, float val)
+{
+    return fabsf(raw - val) < 0.03f || (prev - val) * (raw - val) < 0.f;
+}
+
 static void UpdateControls()
 {
     pod.ProcessAllControls();
+
+    // Knob readings, and the previous ones for crossing detection. Updated
+    // on every page so a knob moved on the patch page doesn't look like a
+    // crossing later.
+    const float raw[2] = {pod.knob1.Value(), pod.knob2.Value()};
+    if(!haveLastRaw)
+    {
+        lastRaw[0] = raw[0];
+        lastRaw[1] = raw[1];
+        haveLastRaw = true;
+    }
+    const float prev[2] = {lastRaw[0], lastRaw[1]};
+    lastRaw[0]          = raw[0];
+    lastRaw[1]          = raw[1];
 
     // Page change
     int inc = pod.encoder.Increment();
@@ -114,6 +138,9 @@ static void UpdateControls()
     {
         page      = (page + inc + kNumPages) % kNumPages;
         picked[0] = picked[1] = false;
+        // A button 2 hold that started on another page doesn't count as a
+        // save hold.
+        saveLatched = pod.button2.Pressed();
     }
 
     if(pod.encoder.RisingEdge())
@@ -122,7 +149,7 @@ static void UpdateControls()
     if(page == kPatchPage)
     {
         // Slot select follows knob 1 directly (no takeover needed).
-        selSlot = (int)(pod.knob1.Value() * kNumSlots);
+        selSlot = (int)(raw[0] * kNumSlots);
         if(selSlot >= kNumSlots)
             selSlot = kNumSlots - 1;
 
@@ -152,11 +179,10 @@ static void UpdateControls()
     }
 
     // Soft-takeover knobs
-    float      *vals   = cur.v[page];
-    const float raw[2] = {pod.knob1.Value(), pod.knob2.Value()};
+    float *vals = cur.v[page];
     for(int k = 0; k < 2; k++)
     {
-        if(!picked[k] && fabsf(raw[k] - vals[k]) < 0.03f)
+        if(!picked[k] && PicksUp(prev[k], raw[k], vals[k]))
             picked[k] = true;
         if(picked[k])
             vals[k] = raw[k];
@@ -263,7 +289,7 @@ int main(void)
     pod.SetAudioBlockSize(48); // 1 ms at 48 kHz; controls update per block
 
     InitStorage();
-    engine.Init(pod.AudioSampleRate(), 48, &verb);
+    engine.Init(pod.AudioSampleRate(), pod.AudioBlockSize(), &verb);
     engine.JumpTo(cur); // start on pitch, no glide
 
     pod.StartAdc();
@@ -274,6 +300,11 @@ int main(void)
         if(pendingSave)
         {
             Store &s = storage.GetSettings();
+            // The audio callback writes pendingPatch/pendingSlot and reads
+            // the stored slots, so take the request and update the RAM copy
+            // with interrupts off (a few microseconds). The slow flash erase
+            // and write happen afterwards with audio running.
+            __disable_irq();
             if(pendingSlot >= 0)
             {
                 s.slots[pendingSlot] = pendingPatch;
@@ -284,6 +315,7 @@ int main(void)
                 s.bootSlot = (uint8_t)(-1 - pendingSlot);
             }
             pendingSave = false;
+            __enable_irq();
             storage.Save(); // only erases/writes if something changed
         }
     }

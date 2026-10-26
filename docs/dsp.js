@@ -329,6 +329,7 @@
   const SPREAD = [-1, -0.33, 0.33, 1, -0.6, 0.6];
   const PAN = [0.15, 0.7, 0.3, 0.85, 0.25, 0.75];
   const INTERVALS = [0, 7, 12, 5, 3, 4, 10];
+  const WAVE_COUNT = 4; // saw, square, triangle, sine
 
   class DroneEngine {
     constructor(sr) {
@@ -377,6 +378,19 @@
       this.subAmp = 0.3;
       this.dryG = 1;
       this.wetG = 0;
+      this.resSm = null;
+      this.mixSm = null;
+      // Waveform and interval actually playing, and the voice level used to
+      // dip the voices out while they switch (see control()).
+      this.wave = null;
+      this.interval = null;
+      this.swapGain = 1;
+      this.swapG = 1;
+      this.swapStep = 0;
+      // One-pole 20 Hz high-pass ahead of the filter
+      this.hpCoef = 1 - Math.exp((-TWOPI * 20) / sr);
+      this.hpL = 0;
+      this.hpR = 0;
     }
 
     setPatch(p) {
@@ -395,9 +409,15 @@
       const mix = p.v[3][0];
       const feedback = 0.6 + p.v[3][1] * 0.385;
 
+      const wantWave = p.wave % WAVE_COUNT;
+      const wantInt = p.interval % INTERVALS.length;
       if (this.rootSm === null) {
         this.rootSm = rootTarget;
         this.cutoffSm = cutoffBase;
+        this.resSm = res;
+        this.mixSm = mix;
+        this.wave = wantWave;
+        this.interval = wantInt;
       }
 
       this.lfoPhase += motionHz * dt;
@@ -412,28 +432,42 @@
       this.rootSm += 0.004 * (rootTarget - this.rootSm);
       this.cutoffSm += 0.05 * (cutoffBase - this.cutoffSm);
       this.ampSm += 0.05 * (1 - depth * 0.3 * (0.5 + 0.5 * lfo2) - this.ampSm);
+      this.resSm += 0.05 * (res - this.resSm);
+      this.mixSm += 0.05 * (mix - this.mixSm);
 
       const sweep = depth * 2;
       this.fL.setFreq(clamp(this.cutoffSm * Math.pow(2, lfoL * sweep), 20, 16000));
       this.fR.setFreq(clamp(this.cutoffSm * Math.pow(2, lfoR * sweep), 20, 16000));
-      this.fL.setRes(res);
-      this.fR.setRes(res);
+      this.fL.setRes(this.resSm);
+      this.fR.setRes(this.resSm);
       this.verb.feedback = feedback;
 
+      // Click-free waveform/interval switch: dip the six voices out
+      // (~10 ms), switch while silent, bring them back (~20 ms).
+      const swapG0 = this.swapGain;
+      if (swapG0 <= 0) {
+        this.wave = wantWave;
+        this.interval = wantInt;
+      }
+      const changing = wantWave !== this.wave || wantInt !== this.interval;
+      this.swapGain = changing ? Math.max(0, swapG0 - 0.1) : Math.min(1, swapG0 + 0.05);
+      this.swapG = swapG0;
+      this.swapStep = (this.swapGain - swapG0) / BLOCK;
+
       const driftCt = 2 + depth * 10;
-      const interval = INTERVALS[p.interval % INTERVALS.length];
+      const interval = INTERVALS[this.interval];
       for (let i = 0; i < NUM_VOICES; i++) {
         const semis = i < NUM_ROOT ? 0 : interval;
         let cents = SPREAD[i] * detuneCt;
         cents += this.drift[i].process() * driftCt;
         this.osc[i].setFreq(mtof(this.rootSm + semis + cents * 0.01));
-        this.osc[i].wave = p.wave;
+        this.osc[i].wave = this.wave;
       }
       this.sub.setFreq(mtof(this.rootSm - 12));
 
       this.subAmp = p.sub ? 0.3 : 0;
-      this.dryG = Math.cos(mix * HALFPI);
-      this.wetG = Math.sin(mix * HALFPI);
+      this.dryG = Math.cos(this.mixSm * HALFPI);
+      this.wetG = Math.sin(this.mixSm * HALFPI);
     }
 
     render(outL, outR, n) {
@@ -447,14 +481,21 @@
 
         let l = 0;
         let r = 0;
+        const g = (this.swapG += this.swapStep);
         for (let v = 0; v < NUM_VOICES; v++) {
-          const s = osc[v].process();
+          const s = osc[v].process() * g;
           l += s * gL[v];
           r += s * gR[v];
         }
         const s = this.sub.process() * this.subAmp;
         l += s;
         r += s;
+
+        // 20 Hz high-pass (input minus its one-pole low-pass)
+        this.hpL += this.hpCoef * (l - this.hpL);
+        this.hpR += this.hpCoef * (r - this.hpR);
+        l -= this.hpL;
+        r -= this.hpR;
 
         l = this.fL.process(l) * this.ampSm;
         r = this.fR.process(r) * this.ampSm;
